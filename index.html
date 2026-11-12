@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Estoque - Loja de Informática</title>
+    <!-- Biblioteca oficial do Supabase via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --danger: #dc2626;
+            --warning: #f59e0b;
+            --success: #16a34a;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: var(--bg); color: var(--text); padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+        h1 { font-size: 1.8rem; color: var(--primary); }
+        .btn { padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: 0.2s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-sm { padding: 6px 12px; font-size: 0.8rem; }
+        .card { background: var(--card); border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; color: #64748b; }
+        .form-group input, .form-group select { padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 0.9rem; }
+        .form-group input:focus { outline: 2px solid var(--primary); border-color: transparent; }
+        .filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+        .filters input, .filters select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; }
+        .table-responsive { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th { text-align: left; padding: 12px 8px; background: #f1f5f9; font-weight: 600; color: #475569; border-bottom: 2px solid var(--border); }
+        td { padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+        .badge-low { background: #fee2e2; color: var(--danger); }
+        .badge-ok { background: #dcfce7; color: var(--success); }
+        .actions { display: flex; gap: 6px; }
+        .toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; border-radius: 6px; color: white; font-weight: 500; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .toast.show { opacity: 1; }
+        .toast-success { background: var(--success); }
+        .toast-error { background: var(--danger); }
+        .empty-msg { text-align: center; padding: 40px; color: #94a3b8; }
+        @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🖥️ Estoque - Informática</h1>
+            <span id="low-stock-alert" style="display:none; background:#fee2e2; color:#dc2626; padding:8px 16px; border-radius:20px; font-weight:600; font-size:0.85rem;">
+                ⚠️ <span id="low-count">0</span> produto(s) com estoque baixo!
+            </span>
+        </header>
+
+        <!-- Formulário de Cadastro/Edição -->
+        <div class="card" id="form-card">
+            <h2 style="font-size:1.1rem; margin-bottom:16px;" id="form-title">Novo Produto</h2>
+            <form id="product-form">
+                <input type="hidden" id="product-id">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Nome *</label>
+                        <input type="text" id="nome" required placeholder="Ex: Teclado Mecânico">
+                    </div>
+                    <div class="form-group">
+                        <label>Categoria *</label>
+                        <input type="text" id="categoria" required placeholder="Ex: Periféricos">
+                    </div>
+                    <div class="form-group">
+                        <label>Marca</label>
+                        <input type="text" id="marca" placeholder="Ex: Logitech">
+                    </div>
+                    <div class="form-group">
+                        <label>Modelo</label>
+                        <input type="text" id="modelo" placeholder="Ex: G Pro X">
+                    </div>
+                    <div class="form-group">
+                        <label>Código do Produto *</label>
+                        <input type="text" id="codigo" required placeholder="Ex: PER-001">
+                    </div>
+                    <div class="form-group">
+                        <label>Quantidade *</label>
+                        <input type="number" id="quantidade" required min="0" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Preço de Custo (R$)</label>
+                        <input type="number" id="preco_custo" step="0.01" min="0" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label>Preço de Venda (R$)</label>
+                        <input type="number" id="preco_venda" step="0.01" min="0" value="0">
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" class="btn btn-primary" id="btn-submit">Cadastrar</button>
+                    <button type="button" class="btn" style="background:#e2e8f0;" id="btn-cancel" onclick="resetForm()">Cancelar</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Filtros e Busca -->
+        <div class="card" style="padding:16px;">
+            <div class="filters">
+                <input type="text" id="search" placeholder="🔍 Buscar por nome, código, marca..." style="flex:1; min-width:200px;">
+                <select id="filter-category">
+                    <option value="">Todas as categorias</option>
+                </select>
+                <select id="filter-stock">
+                    <option value="all">Todo o estoque</option>
+                    <option value="low">Estoque baixo (≤ 5)</option>
+                </select>
+                <button class="btn" style="background:#e2e8f0;" onclick="loadProducts()">Atualizar</button>
+            </div>
+        </div>
+
+        <!-- Tabela de Produtos -->
+        <div class="card">
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Código</th>
+                            <th>Nome</th>
+                            <th>Categoria</th>
+                            <th>Marca/Modelo</th>
+                            <th>Qtd</th>
+                            <th>Custo</th>
+                            <th>Venda</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="product-list">
+                        <tr><td colspan="8" class="empty-msg">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // =================================================================
+        // CONFIGURAÇÃO DO SUPABASE - SUBSTITUA PELOS SEUS DADOS
+        // =================================================================
+        // Acesse: Project Settings > API no painel do Supabase
+        const SUPABASE_URL = 'https://nivmfxzhbaonzesjasgl.supabase.co'; // Ex: 'https://xyzabc.supabase.co'
+        const SUPABASE_ANON_KEY = 'sb_publishable_t98x6oe2aoh5Q5pvEcwtJA_sfC-4LEc'; // Ex: 'eyJhbGciOiJIUzI1NiIs...'
+        // =================================================================
+        // NUNCA COLOQUE A CHAVE service_role AQUI. ELA É SECRETA E IGNORA AS REGRAS DE SEGURANÇA (RLS).
+        // =================================================================
+
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Elementos DOM
+        const form = document.getElementById('product-form');
+        const productList = document.getElementById('product-list');
+        const searchInput = document.getElementById('search');
+        const filterCategory = document.getElementById('filter-category');
+        const filterStock = document.getElementById('filter-stock');
+        const toastEl = document.getElementById('toast');
+        const formTitle = document.getElementById('form-title');
+        const btnSubmit = document.getElementById('btn-submit');
+        let allProducts = [];
+
+        // Toast de notificação
+        function showToast(msg, type = 'success') {
+            toastEl.textContent = msg;
+            toastEl.className = `toast toast-${type} show`;
+            setTimeout(() => toastEl.classList.remove('show'), 3000);
+        }
+
+        // Carregar produtos do Supabase
+        async function loadProducts() {
+            const { data, error } = await supabaseClient
+                .from('produtos')
+                .select('*')
+                .order('nome', { ascending: true });
+
+            if (error) {
+                showToast('Erro ao carregar: ' + error.message, 'error');
+                productList.innerHTML = `<tr><td colspan="8" class="empty-msg">Erro ao carregar dados. Verifique a configuração.</td></tr>`;
+                return;
+            }
+
+            allProducts = data || [];
+            updateCategoryFilter();
+            renderTable();
+            updateLowStockAlert();
+        }
+
+        // Atualizar alerta de estoque baixo
+        function updateLowStockAlert() {
+            const lowItems = allProducts.filter(p => p.quantidade <= 5);
+            const alertEl = document.getElementById('low-stock-alert');
+            document.getElementById('low-count').textContent = lowItems.length;
+            alertEl.style.display = lowItems.length > 0 ? 'inline-block' : 'none';
+        }
+
+        // Preencher filtro de categorias
+        function updateCategoryFilter() {
+            const cats = [...new Set(allProducts.map(p => p.categoria).filter(Boolean))];
+            const currentVal = filterCategory.value;
+            filterCategory.innerHTML = '<option value="">Todas as categorias</option>' +
+                cats.map(c => `<option value="${c}">${c}</option>`).join('');
+            filterCategory.value = currentVal;
+        }
+
+        // Renderizar tabela com filtros
+        function renderTable() {
+            const search = searchInput.value.toLowerCase().trim();
+            const catFilter = filterCategory.value;
+            const stockFilter = filterStock.value;
+
+            let filtered = allProducts.filter(p => {
+                // Busca
+                if (search) {
+                    const text = `${p.nome} ${p.codigo} ${p.marca || ''} ${p.modelo || ''}`.toLowerCase();
+                    if (!text.includes(search)) return false;
+                }
+                // Categoria
+                if (catFilter && p.categoria !== catFilter) return false;
+                // Estoque
+                if (stockFilter === 'low' && p.quantidade > 5) return false;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                productList.innerHTML = '<tr><td colspan="8" class="empty-msg">Nenhum produto encontrado.</td></tr>';
+                return;
+            }
+
+            productList.innerHTML = filtered.map(p => {
+                const isLow = p.quantidade <= 5;
+                return `
+                <tr>
+                    <td><strong>${p.codigo}</strong></td>
+                    <td>${p.nome}</td>
+                    <td>${p.categoria || '-'}</td>
+                    <td>${[p.marca, p.modelo].filter(Boolean).join(' / ') || '-'}</td>
+                    <td>
+                        <span class="badge ${isLow ? 'badge-low' : 'badge-ok'}">
+                            ${p.quantidade} ${isLow ? '⚠️' : ''}
+                        </span>
+                    </td>
+                    <td>R$ ${(p.preco_custo || 0).toFixed(2)}</td>
+                    <td>R$ ${(p.preco_venda || 0).toFixed(2)}</td>
+                    <td class="actions">
+                        <button class="btn btn-warning btn-sm" onclick="editProduct(${p.id})">✏️</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteProduct(${p.id})">🗑️</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Submeter formulário (Criar ou Atualizar)
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('product-id').value;
+            const product = {
+                nome: document.getElementById('nome').value.trim(),
+                categoria: document.getElementById('categoria').value.trim(),
+                marca: document.getElementById('marca').value.trim() || null,
+                modelo: document.getElementById('modelo').value.trim() || null,
+                codigo: document.getElementById('codigo').value.trim(),
+                quantidade: parseInt(document.getElementById('quantidade').value) || 0,
+                preco_custo: parseFloat(document.getElementById('preco_custo').value) || 0,
+                preco_venda: parseFloat(document.getElementById('preco_venda').value) || 0,
+            };
+
+            let error;
+            if (id) {
+                // Atualizar
+                const res = await supabaseClient.from('produtos').update(product).eq('id', id);
+                error = res.error;
+            } else {
+                // Inserir
+                const res = await supabaseClient.from('produtos').insert([product]);
+                error = res.error;
+            }
+
+            if (error) {
+                showToast('Erro: ' + error.message, 'error');
+            } else {
+                showToast(id ? 'Produto atualizado!' : 'Produto cadastrado!');
+                resetForm();
+                loadProducts();
+            }
+        });
+
+        // Editar produto (preencher formulário)
+        window.editProduct = function(id) {
+            const p = allProducts.find(x => x.id === id);
+            if (!p) return;
+            document.getElementById('product-id').value = p.id;
+            document.getElementById('nome').value = p.nome;
+            document.getElementById('categoria').value = p.categoria || '';
+            document.getElementById('marca').value = p.marca || '';
+            document.getElementById('modelo').value = p.modelo || '';
+            document.getElementById('codigo').value = p.codigo;
+            document.getElementById('quantidade').value = p.quantidade;
+            document.getElementById('preco_custo').value = p.preco_custo || 0;
+            document.getElementById('preco_venda').value = p.preco_venda || 0;
+
+            formTitle.textContent = 'Editar Produto';
+            btnSubmit.textContent = 'Salvar Alterações';
+            btnSubmit.classList.remove('btn-primary');
+            btnSubmit.classList.add('btn-warning');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        // Excluir produto
+        window.deleteProduct = async function(id) {
+            if (!confirm('Tem certeza que deseja excluir este produto?')) return;
+            const { error } = await supabaseClient.from('produtos').delete().eq('id', id);
+            if (error) {
+                showToast('Erro ao excluir: ' + error.message, 'error');
+            } else {
+                showToast('Produto excluído!');
+                loadProducts();
+            }
+        };
+
+        // Resetar formulário
+        window.resetForm = function() {
+            form.reset();
+            document.getElementById('product-id').value = '';
+            formTitle.textContent = 'Novo Produto';
+            btnSubmit.textContent = 'Cadastrar';
+            btnSubmit.classList.add('btn-primary');
+            btnSubmit.classList.remove('btn-warning');
+        };
+
+        // Eventos de filtro
+        searchInput.addEventListener('input', renderTable);
+        filterCategory.addEventListener('change', renderTable);
+        filterStock.addEventListener('change', renderTable);
+
+        // Inicialização
+        loadProducts();
+    </script>
+</body>
+</html>
